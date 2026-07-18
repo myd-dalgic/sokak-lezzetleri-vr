@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sokak Lezzetleri Arabası - VR</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌭</text></svg>">
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #111; font-family: Arial, sans-serif; }
+  #canvas { width: 100vw; height: 100vh; display: block; }
+  #ui {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    color: #fff; background: rgba(0,0,0,0.55); padding: 10px 16px;
+    border-radius: 10px; font-size: 15px; line-height: 1.5;
+    pointer-events: none;
+  }
+  #order {
+    position: fixed; top: 12px; right: 12px; z-index: 10;
+    color: #fff; background: rgba(20,20,20,0.75); padding: 10px 16px;
+    border-radius: 10px; font-size: 15px; min-width: 200px;
+  }
+  #order h3 { margin: 0 0 6px 0; font-size: 14px; color: #ffcc66; }
+  #orderTimerWrap { margin-top: 8px; height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
+  #orderTimerBar { height: 100%; width: 100%; background: #66ff88; transition: width 0.2s linear, background 0.2s linear; }
+  #vrBtn {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 10; padding: 12px 28px; font-size: 16px; font-weight: bold;
+    background: #ff6b35; color: white; border: none; border-radius: 30px;
+    cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  }
+  #vrBtn:hover { background: #ff8555; }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.75);
+    box-shadow: 0 0 3px rgba(0,0,0,0.5);
+    z-index: 9; pointer-events: none; transition: transform 0.1s, background 0.1s;
+  }
+  #crosshair.active { background: rgba(120,255,150,0.85); transform: translate(-50%, -50%) scale(1.6); }
+  #toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    z-index: 10; padding: 10px 20px; background: rgba(0,0,0,0.7);
+    color: #fff; border-radius: 8px; font-size: 16px; opacity: 0;
+    transition: opacity 0.3s; pointer-events: none;
+  }
+  #score {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 10; color: #ffd166; background: rgba(0,0,0,0.55);
+    padding: 8px 20px; border-radius: 10px; font-size: 18px; font-weight: bold;
+  }
+</style>
+</head>
+<body>
+<div id="score">💰 0 TL</div>
+<div id="ui">
+  🖱️ Sürükle: Nesneyi tut & taşı<br>
+  🎮 VR'de: Tetik ile tut/bırak · <b>parmaklar grip ile kıvrılır (eldiven)</b><br>
+  🧤 VR'de ellerinde eldiven görürsün — bir şey tutarken parmaklar kapanır<br>
+  🥢 Maşayı tut, <b>Boşluk</b> (VR: grip) ile kapat = köfteyi tutar, bırakınca açılır<br>
+  🥩 Kırmızı halkadaki paketten çiğ köfte al<br>
+  🔥 Izgaraya koy, pişince <b>"tınk!"</b> sesiyle haber verir, ekmeğe aktar, servis et!<br>
+  🍅 Ketçap/mayonez şişesini tut, <b>Boşluk</b> (VR: grip) ile sık<br>
+  🧽 Kirlenirse: su şişesiyle ıslat, bezle sil<br>
+  🚶 <b>WASD/Ok tuşları</b>: dükkanda yürü · <b>VR:</b> sol çubuk = yürü, sağ çubuk = dön, ya da gerçekten yürü!<br>
+  🔔 Tezgahtaki zili çal → yeni sipariş gelsin
+</div>
+<div id="order">
+  <h3>SİPARİŞ</h3>
+  <div id="orderText">Bekleniyor...</div>
+  <div id="orderTimerWrap"><div id="orderTimerBar"></div></div>
+</div>
+<button id="vrBtn">VR'a Gir</button>
+<div id="toast"></div>
+
+<canvas id="canvas"></canvas>
+<div id="crosshair"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<div id="errorBox" style="display:none; position:fixed; bottom:12px; left:12px; right:12px; max-height:40vh; overflow:auto; z-index:9999; background:rgba(180,0,0,0.92); color:#fff; font:12px monospace; padding:10px 14px; border-radius:8px; white-space:pre-wrap;"></div>
+<script>
+  function showJsError(msg) {
+    const box = document.getElementById('errorBox');
+    box.style.display = 'block';
+    box.textContent += (box.textContent ? '\n---\n' : '') + msg;
+  }
+  window.addEventListener('error', (e) => showJsError('HATA: ' + e.message + '\n(' + (e.filename || '') + ':' + (e.lineno || '') + ')'));
+  window.addEventListener('unhandledrejection', (e) => showJsError('PROMISE HATASI: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+</script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
